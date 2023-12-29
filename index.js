@@ -78,16 +78,26 @@ async function run() {
       //   res.status(500).json({ message: 'Error submitting review' });
       // }
     });
-    app.post('/blog', upload.single('image'), async (req, res) => {
-      const { title, description, date, email } = req.body;
-      const img = req.file.buffer.toString('base64');
-   
-      // Process the received data, save it to a database, or perform other necessary actions.
-      const post = { title, description, date, img, email };
+    app.post('/blog', async (req, res) => {
+      const { title, description, date, img, email } = req.body;
+      // Here, you can process the received data, save it to a database, or perform any other necessary actions.
+      // For this example, we'll just log the received data.
+      console.log({ title, description, date, img, email });
+      const post = { title, description, date, img, email }; // Create an object to insert
       const result = await blogCollection.insertOne(post);
-   
+      console.log(result)
       res.json(result);
-   });
+    });
+  //   app.post('/blog', upload.single('image'), async (req, res) => {
+  //     const { title, description, date, email } = req.body;
+  //     const img = req.file.buffer.toString('base64');
+   
+  //     // Process the received data, save it to a database, or perform other necessary actions.
+  //     const post = { title, description, date, img, email };
+  //     const result = await blogCollection.insertOne(post);
+   
+  //     res.json(result);
+  //  });
     app.get('/reviews',async(req,res)=>{
       try{
         const result= await reviewCollection.find().limit(3).toArray();
@@ -100,6 +110,7 @@ async function run() {
     })
     app.post('/payments',async(req,res)=>{
       const payment=req.body;
+     
       const result=await paymentCollection.insertOne(payment)
       res.send(result)
     })
@@ -114,12 +125,33 @@ async function run() {
       const result = await userCollection.insertOne(user)
       res.send(result);
     })
-    app.get('/users',verifyJWT,async(req,res)=>{
+    app.get('/users',async(req,res)=>{
       const query={}
       const users=await userCollection.find(query).toArray();
       console.log(users)
       res.send(users)
     })
+    app.get('/users/:email',async (req,res)=>{
+        try {
+          const userEmail= req.params.email;
+          
+          const query = {email: userEmail};
+          const user = await userCollection.findOne(query);
+          if (user){
+            res.json({role:user.role});
+
+          }
+          else{
+            res.status(404).json({error:'User not found'})
+          }
+       
+        }
+        catch(error){
+          console.error('Error fetching user role',error)
+          res.status(500).json({error:'Internal server error'})
+        }
+    })
+
     app.get('/users/admin/:email',verifyJWT,async(req,res)=>{
       const email =req.params.email;
       const decodedEmail=req.decoded.email;
@@ -132,18 +164,46 @@ async function run() {
       res.send(result)
       
     })
-    app.patch('/users/admin/:id',async(req,res)=>{
-      const id =req.params.id;
-     console.log(id)
-      const filter= {_id: new ObjectId(id)}
-      const updateDoc={
-        $set:{
-          role:'admin'
-        },
-      };
-      const result = await userCollection.updateOne(filter,updateDoc);
-      res.send(result)
-    })
+    app.get('/orderhistory/:email', async (req, res) => {
+      const userEmail = req.params.email;
+      console.log('dfgh',userEmail)
+      try {
+          const userEmail = req.params.email;
+          const query = { user: userEmail }; 
+          console.log('bddd',query)// Assuming 'user' is the field name in your documents
+          const transaction = await paymentCollection.find(query).toArray(); 
+          console.log('bddd',transaction)
+          if (transaction) {
+              res.json(transaction);
+          } else {
+              res.status(404).json({ error: 'User not found' });
+          }
+      } catch (error) {
+          console.error('Error fetching user history', error);
+          res.status(500).json({ error: 'Internal server error' });
+      }
+  });
+  
+  
+    app.patch('/users/:id', async (req, res) => {
+      const userId = req.params.id;
+
+      try {
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(userId) },
+          { $set: { role: 'admin' } }
+        );
+
+        if (result.modifiedCount === 1) {
+          res.json({ message: 'User role updated to admin successfully' });
+        } else {
+          res.status(404).json({ error: 'User not found' });
+        }
+      } catch (error) {
+        console.error('Error updating user role:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
   } finally {
     // Ensures that the client will close when you finish/error
   
@@ -171,7 +231,7 @@ app.post('/create-payment-intent',verifyJWT,async(req,res)=>{
     console.log(totalPrice,name)
     const paymentIntent= await stripe.paymentIntents.create({
       amount: amount,
-      currency:'usd'  ,
+      currency:'usd',
       payment_method_types: ['card']
     })
     res.send({
